@@ -1,0 +1,25 @@
+# Deploy The Discharge Hub as a single web service on Render.
+#
+# The frontend is built into backend/public and served by the Express API on
+# one port, so this is one service — not two.
+#
+# SQLite needs durable storage: the disk below is mounted at backend/data and
+# DB_DIR points the app at it. Without a persistent disk the app still runs
+# but the database reseeds on every restart/redeploy.
+
+services:
+  - type: web
+    name: discharge-hub
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DB_DIR
+        value: /var/data
+    disk:
+      name: discharge-hub-data
+      mountPath: /var/data
+      sizeGB: 1
