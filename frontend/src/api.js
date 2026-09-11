@@ -26,6 +26,9 @@ export const api = {
   checkInScript: (id) => request("GET", `/patients/${id}/check-in`),
   runCheckIn: (id) => request("POST", `/patients/${id}/check-in`),
 
+  startRealCall: (id) => request("POST", `/patients/${id}/call`),
+  pollRealCall: (id, callId) => request("GET", `/patients/${id}/calls/${callId}`),
+
   submitDecision: (id, payload) => request("POST", `/patients/${id}/clinical-review`, payload),
   submitOutcome: (id, outcome) => request("POST", `/patients/${id}/clinical-review/outcome`, { outcome }),
 

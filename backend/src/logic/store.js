@@ -85,6 +85,7 @@ export function serializePatient(row, { withAudit = false } = {}) {
     lastScenario: row.last_scenario,
     comms: JSON.parse(row.comms || '{"method":"","language":"","accessibility":[]}'),
     assessment: row.assessment,
+    phone: row.phone || null,
     signals,
     clinicalReview: review
       ? {

@@ -17,6 +17,7 @@ import EvidenceScreen from "./screens/Evidence.jsx";
 import CareTeamScreen from "./screens/CareTeam.jsx";
 import PatientPreviewScreen from "./screens/PatientPreview.jsx";
 import LiveCallModal from "./screens/LiveCallModal.jsx";
+import RealCallModal from "./screens/RealCallModal.jsx";
 
 export default function App() {
   const config = useAsync(api.config, []);
@@ -150,11 +151,11 @@ export default function App() {
 
       {calling && configValue && (
         <ConfigContext.Provider value={configValue}>
-          <LiveCallModal
-            patient={calling}
-            onClose={() => setCalling(null)}
-            onComplete={refreshAll}
-          />
+          {calling.phone && configValue.telephonyEnabled ? (
+            <RealCallModal patient={calling} onClose={() => setCalling(null)} onComplete={refreshAll} />
+          ) : (
+            <LiveCallModal patient={calling} onClose={() => setCalling(null)} onComplete={refreshAll} />
+          )}
         </ConfigContext.Provider>
       )}
     </div>

@@ -10,8 +10,11 @@
     "seed": "node src/seed.js --force"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "twilio": "^5.4.0"
   }
 }

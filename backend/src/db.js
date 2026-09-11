@@ -40,6 +40,7 @@ export function migrate() {
       last_scenario     TEXT    DEFAULT 'clear',  -- 'concern' | 'clear' (which scripted check-in plays)
       comms             TEXT,            -- JSON { method, language, accessibility[] }
       assessment        TEXT,
+      phone             TEXT,            -- E.164 real phone number; NULL for synthetic seed patients
       created_at        TEXT    DEFAULT (datetime('now'))
     );
 
@@ -49,7 +50,32 @@ export function migrate() {
       scenario_key TEXT,
       no_answer    INTEGER DEFAULT 0,
       status       TEXT,
+      mode         TEXT    DEFAULT 'scripted',  -- 'scripted' | 'live_call'
+      call_id      INTEGER,                     -- REFERENCES calls(id) when mode = 'live_call'
       created_at   TEXT DEFAULT (datetime('now'))
+    );
+
+    -- A real, Twilio-placed automated check-in call (FR-3, real telephony).
+    CREATE TABLE IF NOT EXISTS calls (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id    INTEGER NOT NULL REFERENCES patients(id),
+      to_phone      TEXT NOT NULL,
+      call_sid      TEXT,               -- Twilio CallSid, set once Twilio accepts the call
+      status        TEXT DEFAULT 'initiated',  -- initiated | in-progress | completed | no-answer | busy | failed
+      turn          INTEGER DEFAULT 0,
+      ended_reason  TEXT,               -- 'assistant_closed' | 'max_turns' | 'emergency_redirect' | 'hangup'
+      created_at    TEXT DEFAULT (datetime('now')),
+      updated_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Full transcript of a live call — durable + auditable (FR-7 spirit),
+    -- and it's what the signal-extraction step reads once the call ends.
+    CREATE TABLE IF NOT EXISTS call_turns (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id    INTEGER NOT NULL REFERENCES calls(id),
+      speaker    TEXT NOT NULL,   -- 'ai' | 'patient'
+      text       TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS signals (
@@ -106,4 +132,16 @@ export function migrate() {
       community TEXT
     );
   `);
+
+  // Additive migrations for DBs created before a column existed.
+  ensureColumn("patients", "phone", "TEXT");
+  ensureColumn("check_ins", "mode", "TEXT DEFAULT 'scripted'");
+  ensureColumn("check_ins", "call_id", "INTEGER");
+}
+
+function ensureColumn(table, column, ddlType) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddlType}`);
+  }
 }

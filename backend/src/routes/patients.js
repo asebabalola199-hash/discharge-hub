@@ -27,15 +27,20 @@ router.post("/", (req, res) => {
   }
   const track = TRACKS[f.track] ? f.track : "acute";
 
+  const phone = f.phone && String(f.phone).trim() ? String(f.phone).trim() : null;
+  if (phone && !/^\+?[0-9\s()-]{7,20}$/.test(phone)) {
+    return res.status(400).json({ error: "Phone number looks invalid — use a full number, e.g. +447700900123" });
+  }
+
   const info = db
     .prepare(
       `INSERT INTO patients
         (demo_id, name, age, ward, track, condition, discharged, duration, baseline_risk,
          baseline_reasons, status, contact_attempts, unable_to_contact, ehr_synced, ehr_note_pushed,
-         flagged, pipeline_stage, escalation_level, pathway_status, last_scenario, comms)
+         flagged, pipeline_stage, escalation_level, pathway_status, last_scenario, comms, phone)
        VALUES
         (@demo_id, @name, @age, @ward, @track, @condition, @discharged, @duration, 'Medium',
-         @baseline_reasons, 'pending', 0, 0, 0, 0, 0, 2, 0, 'grey', 'clear', @comms)`
+         @baseline_reasons, 'pending', 0, 0, 0, 0, 0, 2, 0, 'grey', 'clear', @comms, @phone)`
     )
     .run({
       demo_id: nextDemoId(),
@@ -52,6 +57,7 @@ router.post("/", (req, res) => {
         language: f.language || "English",
         accessibility: Array.isArray(f.accessibility) ? f.accessibility : [],
       }),
+      phone,
     });
 
   addAudit(info.lastInsertRowid, "Care plan created", "📄");

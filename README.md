@@ -123,7 +123,7 @@ Restating §9 of `Discharge_Hub_Requirements.md` for this build.
 | Area | Status |
 |---|---|
 | TrakCare / EHR sync (HL7 / FHIR) | **Simulated.** "Sync from EHR" inserts a fixed demo summary. No live integration. (FR-8.1/8.2 = Planned) |
-| Telephony / SMS / patient portal delivery | **Simulated.** The check-in conversation is scripted; no calls are placed. (FR-3.1 = Partial) |
+| Telephony / SMS / patient portal delivery | **Simulated by default; real calling is available but off unless configured.** See [Real telephony](#real-telephony-optional) below. (FR-3.1 = Partial) |
 | Reviewer notification channel | **Simulated.** Shown in the audit trail only. (FR-9.2 = Partial) |
 | Authentication / NHS identity / RBAC | **Not built.** No login. All clinician actions are attributed to a single seeded identity ("Sarah Jones, RN") shown as demo attribution. (NFR-9/10 = Planned) |
 | Preferred-language delivery / translation | **Not built.** Preference is captured only. (FR-3.6 = Planned) |
@@ -153,7 +153,54 @@ POST /api/pathways/:id/submit                 Draft → Pending Approval
 POST /api/pathways/:id/approve                Pending Approval → Published
 GET  /api/care-team                           directory by ward
 GET  /api/analytics                           live counts (this DB) + illustrative figures + evaluation framework
+POST /api/patients/:id/call                   place a REAL automated call (only if telephony is configured; see below)
+GET  /api/patients/:id/calls/:callId          poll a real call's live status + transcript
+POST /api/telephony/voice/:callId             Twilio webhook — call connected (not for direct use)
+POST /api/telephony/gather/:callId            Twilio webhook — patient spoke (not for direct use)
+POST /api/telephony/status/:callId            Twilio webhook — call ended (not for direct use)
 ```
+
+---
+
+## Real telephony (optional)
+
+By default every check-in is the scripted demo conversation described above — this needs
+no setup and is what the seeded synthetic patients use. **Real, live automated phone calls
+are also built in**, off by default, and turn on automatically once configured.
+
+**What actually happens on a real call:** Twilio places a real call to the patient's phone
+number. Each turn, Claude (via the Anthropic API) generates the next line live —
+identifying itself as automated, asking only about that pathway's monitored topics
+(FR-2.1), and redirecting anything emergency-sounding straight to emergency services
+rather than attempting to handle it. Twilio's speech recognition transcribes what the
+patient says; the full transcript is stored (`call_turns` table). Once the call ends, a
+second Claude call extracts the same structured `[signal, baseline, current, severity]`
+rows the scripted demo produces, which then flow through the **identical** downstream
+pipeline — `deriveStatus()`, escalation, audit trail — so a real call and a scripted demo
+check-in are indistinguishable to the rest of the app (see `logic/checkinResult.js`, the
+single shared path both call).
+
+**To turn it on**, set these as real environment variables (locally in a gitignored
+`backend/.env` — copy `backend/.env.example` — or in your hosting platform's dashboard,
+never pasted into chat):
+
+| Variable | What it is |
+|---|---|
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` | From a Twilio account with a Voice-capable number. Real per-minute cost. |
+| `ANTHROPIC_API_KEY` | Drives the live conversation + signal extraction. Real per-call cost. |
+| `PUBLIC_BASE_URL` | The exact public `https://` URL of **this** deployment — Twilio must be able to reach it. `localhost` will not work; this only works once deployed (e.g. to Render). |
+
+Then give a patient a real phone number — either in **New Discharge Plan**, or by adding
+one to an existing record — and their "Start Check-In" places a real call instead of
+playing the script. Any patient with no phone number, or if any variable above is unset,
+always gets the scripted demo — nothing breaks and nothing silently pretends a call
+happened.
+
+**Before pointing this at a real person, be aware of what is genuinely *not* in place
+yet**, per `Discharge_Hub_Requirements.md`: no patient consent capture (NFR-6, Planned),
+no clinical safety sign-off (NFR-1, Planned), no DPIA (NFR-5, Planned). This exists so the
+mechanism can be demonstrated and tested (e.g. calling your own phone), not as something
+ready to contact real patients in production.
 
 ---
 
@@ -163,24 +210,39 @@ Designed to deploy as **one web service**: `npm run build` bundles the frontend 
 `backend/public/`, and `npm start` serves it alongside the API from a single port
 (`process.env.PORT`).
 
-`render.yaml` describes exactly this. **One caveat, flagged deliberately:** SQLite needs
-durable storage. On Render/Railway the default filesystem is ephemeral, so `render.yaml`
-mounts a small **persistent disk** at `backend/data` and sets `DB_DIR` to it. Without a
-persistent disk the demo still runs but reseeds on every restart/redeploy. A `Dockerfile`
-is included for container platforms.
+`render.yaml` describes exactly this. **One caveat, corrected here after checking Render's
+own docs:** a **free** Render web service cannot attach a persistent disk at all — that's
+a paid-plan feature. So as configured (`plan: free`), the SQLite database resets to a
+clean synthetic seed on every restart/redeploy/spin-down; nothing you add or change in a
+session survives it. Two ways to fix that, depending on how you want to pay for it:
+
+1. **Upgrade the Render plan** to a paid tier and uncomment the `disk:` block in
+   `render.yaml` — genuine persistent local storage.
+2. **Point the database at Neon** (neon.tech) instead of a local file — a managed
+   Postgres reachable over the network, so it doesn't care that the free web service has
+   no disk. Free tier is generous enough for this demo. This is a real code change
+   (swapping `better-sqlite3` for a Postgres client), not a config toggle — ask if you
+   want this done.
+
+A `Dockerfile` is included for container platforms as an alternative to Render.
 
 ### Project layout
 
 ```
 discharge-hub/
 ├── backend/
+│   ├── .env.example         real-telephony env vars, documented
 │   └── src/
 │       ├── index.js            Express app (+ static serve in prod)
 │       ├── db.js               SQLite connection + schema
 │       ├── seed.js             synthetic demo data
 │       ├── config/clinical.js  tracks, scripted scenarios, reference tables
-│       ├── logic/              riskAssessment · recommendation · store (serializer)
-│       └── routes/             config · patients · checkins · reviews · pathways · careteam · analytics
+│       ├── logic/              riskAssessment · recommendation · checkinResult (shared by
+│       │                       scripted + real calls) · store (serializer)
+│       ├── telephony/          env.js (feature flag) · twilioClient.js · voiceAgent.js
+│       │                       (Claude-driven live conversation + signal extraction)
+│       └── routes/             config · patients · checkins · reviews · pathways ·
+│                               careteam · analytics · telephony (real calls + webhooks)
 └── frontend/
     └── src/
         ├── theme.jsx           navy/teal theme + atoms (verbatim from the prototype)
@@ -188,5 +250,6 @@ discharge-hub/
         ├── App.jsx             screen router + bottom nav
         └── screens/            Dashboard · Patients · NewDischarge · UploadSummary ·
                                 PatientDetail · Worklist · PathwayBuilder · More ·
-                                Analytics · Evidence · CareTeam · PatientPreview · LiveCallModal
+                                Analytics · Evidence · CareTeam · PatientPreview ·
+                                LiveCallModal (scripted) · RealCallModal (live call)
 ```

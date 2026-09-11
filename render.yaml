@@ -3,9 +3,19 @@
 # The frontend is built into backend/public and served by the Express API on
 # one port, so this is one service — not two.
 #
-# SQLite needs durable storage: the disk below is mounted at backend/data and
-# DB_DIR points the app at it. Without a persistent disk the app still runs
-# but the database reseeds on every restart/redeploy.
+# CORRECTION (kept here on purpose): free Render web services CANNOT attach a
+# persistent disk — that's a paid-plan-only feature (render.com/docs/disks).
+# So on this free-plan config, SQLite's file resets to a clean seed on every
+# restart/redeploy/spin-down. For a demo that's mostly fine (every restart
+# hands you a clean, synthetic dataset) but it means nothing you add or
+# change survives a cold start. Two real fixes, in order of effort:
+#   1. Upgrade `plan:` below to a paid tier and uncomment the `disk:` block.
+#   2. Point the backend at an external database (see Neon) instead of a
+#      local file — works even on the free plan, no disk needed.
+#
+# If you added TWILIO_*/ANTHROPIC_API_KEY/PUBLIC_BASE_URL for real telephony,
+# set them here as real env vars (or in the Render dashboard) — never commit
+# them to git.
 
 services:
   - type: web
@@ -17,9 +27,12 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-      - key: DB_DIR
-        value: /var/data
-    disk:
-      name: discharge-hub-data
-      mountPath: /var/data
-      sizeGB: 1
+    # Uncomment both of these ONLY after upgrading `plan:` above to a paid
+    # tier — a disk on the free plan will fail to provision.
+    # envVars:
+    #   - key: DB_DIR
+    #     value: /var/data
+    # disk:
+    #   name: discharge-hub-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

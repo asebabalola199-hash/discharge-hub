@@ -5,15 +5,19 @@ import {
   PATHWAY_QUESTIONS, PATIENT_EDUCATION, PATIENT_PLAN_TEMPLATE, PAEDIATRIC_TEMPLATE,
   AI_DISCLAIMER, REVIEWER,
 } from "../config/clinical.js";
+import { telephonyConfig } from "../telephony/env.js";
 
 const router = Router();
 
 // Reference data + copy that the backend owns. The frontend renders from
 // this rather than keeping its own clinical constants.
 router.get("/", (_req, res) => {
+  const tel = telephonyConfig();
   res.json({
     reviewer: REVIEWER,
     aiDisclaimer: AI_DISCLAIMER,
+    telephonyEnabled: tel.enabled,
+    telephonyMissing: tel.missing,
     pipeline: PIPELINE,
     tracks: TRACKS,
     durationOptions: DURATION_OPTIONS,

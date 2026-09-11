@@ -91,6 +91,14 @@ export default function PatientDetailScreen({ patient, onBack, onStartCall, onSu
             <div style={{ fontWeight: 700, marginBottom: "0.4rem" }}>Patient Communication</div>
             <div style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Method: <strong>{patient.comms.method}</strong> · Language: <strong>{patient.comms.language}</strong></div>
             {patient.comms.accessibility.length > 0 && <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", marginTop: "0.35rem" }}>{patient.comms.accessibility.map((a) => <Tag key={a} v="purple">{a}</Tag>)}</div>}
+            <div style={{ fontSize: "0.78rem", marginTop: "0.4rem" }}>
+              Phone: <strong>{patient.phone || "Not on file"}</strong>{" "}
+              {patient.phone ? (
+                cfg.telephonyEnabled ? <Tag v="danger">Real calls enabled</Tag> : <Tag v="neutral">Real calls not configured on this server</Tag>
+              ) : (
+                <Tag v="neutral">Scripted demo check-in</Tag>
+              )}
+            </div>
           </Card>
         </div>
       )}

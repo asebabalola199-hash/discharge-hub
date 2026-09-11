@@ -5,8 +5,8 @@ import { useConfig } from "../hooks.js";
 // New Discharge Plan — set up the post-discharge pathway before the patient
 // leaves the ward (FR-1.1, FR-1.3–1.5).
 export default function NewDischargeScreen({ onBack, onSave }) {
-  const { tracks, durationOptions } = useConfig();
-  const [f, setF] = useState({ name: "", age: "", ward: "", track: "acute", condition: "", duration: "72h", method: "Automated voice call", language: "English", accessibility: [] });
+  const { tracks, durationOptions, telephonyEnabled } = useConfig();
+  const [f, setF] = useState({ name: "", age: "", ward: "", track: "acute", condition: "", duration: "72h", method: "Automated voice call", language: "English", accessibility: [], phone: "" });
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
   const toggleAccess = (opt) => setF((s) => ({ ...s, accessibility: s.accessibility.includes(opt) ? s.accessibility.filter((a) => a !== opt) : [...s.accessibility, opt] }));
@@ -40,7 +40,11 @@ export default function NewDischargeScreen({ onBack, onSave }) {
       </Card>
       <Card style={{ borderLeft: `3px solid ${C.purple}` }}>
         <Lbl>Patient communication preferences</Lbl>
-        <div style={{ fontSize: "0.7rem", color: C.textSub, marginBottom: "0.3rem" }}>Preferred method</div>
+        <div style={{ fontSize: "0.7rem", color: C.textSub, marginBottom: "0.3rem" }}>
+          Phone number {telephonyEnabled ? "(a real automated call will be placed to this number)" : "(optional — real calling is not configured on this server)"}
+        </div>
+        <Inp value={f.phone} onChange={set("phone")} placeholder="+447700900123" />
+        <div style={{ fontSize: "0.7rem", color: C.textSub, margin: "0.5rem 0 0.3rem" }}>Preferred method</div>
         <Sel value={f.method} onChange={set("method")}>{["Automated voice call", "SMS", "Patient portal"].map((m) => <option key={m}>{m}</option>)}</Sel>
         <div style={{ fontSize: "0.7rem", color: C.textSub, margin: "0.5rem 0 0.3rem" }}>Preferred language</div>
         <Sel value={f.language} onChange={set("language")}>{["English", "Welsh", "Polish", "Urdu", "Punjabi", "Arabic", "Other"].map((l) => <option key={l}>{l}</option>)}</Sel>
