@@ -169,12 +169,12 @@ no setup and is what the seeded synthetic patients use. **Real, live automated p
 are also built in**, off by default, and turn on automatically once configured.
 
 **What actually happens on a real call:** Twilio places a real call to the patient's phone
-number. Each turn, Claude (via the Anthropic API) generates the next line live —
+number. Each turn, Groq (running Llama 3.3 70B, free tier) generates the next line live —
 identifying itself as automated, asking only about that pathway's monitored topics
 (FR-2.1), and redirecting anything emergency-sounding straight to emergency services
 rather than attempting to handle it. Twilio's speech recognition transcribes what the
 patient says; the full transcript is stored (`call_turns` table). Once the call ends, a
-second Claude call extracts the same structured `[signal, baseline, current, severity]`
+second Groq call extracts the same structured `[signal, baseline, current, severity]`
 rows the scripted demo produces, which then flow through the **identical** downstream
 pipeline — `deriveStatus()`, escalation, audit trail — so a real call and a scripted demo
 check-in are indistinguishable to the rest of the app (see `logic/checkinResult.js`, the
@@ -186,9 +186,15 @@ never pasted into chat):
 
 | Variable | What it is |
 |---|---|
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` | From a Twilio account with a Voice-capable number. Real per-minute cost. |
-| `ANTHROPIC_API_KEY` | Drives the live conversation + signal extraction. Real per-call cost. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | From a Twilio account — required regardless, since placing a real call onto the phone network always goes through some paid telephony provider. |
+| `TWILIO_PHONE_NUMBER` | Either a Twilio-purchased number, **or your own mobile number verified as an Outgoing Caller ID** in the Twilio console (Phone Numbers → Verified Caller IDs) — skips the ~$1/mo number rental. Twilio account + usage fees apply either way. |
+| `GROQ_API_KEY` | Free tier, no card required (console.groq.com). Drives the live conversation + signal extraction. |
 | `PUBLIC_BASE_URL` | The exact public `https://` URL of **this** deployment — Twilio must be able to reach it. `localhost` will not work; this only works once deployed (e.g. to Render). |
+
+**Testing with your own number:** if your Twilio account is still on the free trial (no
+payment method added), Twilio trial accounts can only call numbers verified in the
+console first — verify your own mobile there before testing, whether or not you're also
+using it as the Caller ID above.
 
 Then give a patient a real phone number — either in **New Discharge Plan**, or by adding
 one to an existing record — and their "Start Check-In" places a real call instead of

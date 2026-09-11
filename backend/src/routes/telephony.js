@@ -53,7 +53,7 @@ async function finalizeCall(callId, endedReason) {
 
   let result;
   try {
-    result = await extractSignals({ apiKey: cfg.anthropicApiKey, patient, track, transcript, endedReason });
+    result = await extractSignals({ apiKey: cfg.groqApiKey, patient, track, transcript, endedReason });
   } catch (err) {
     console.error("Signal extraction failed for call", callId, err);
     result = {
@@ -136,7 +136,7 @@ router.post("/telephony/voice/:callId", async (req, res) => {
   const track = TRACKS[patient.track];
   const cfg = telephonyConfig();
 
-  const turn = await nextTurn({ apiKey: cfg.anthropicApiKey, patient, track, transcript: [], assistantTurnCount: 0 });
+  const turn = await nextTurn({ apiKey: cfg.groqApiKey, patient, track, transcript: [], assistantTurnCount: 0 });
   saveTurn(callId, "ai", turn.say);
 
   if (turn.endCall) {
@@ -161,7 +161,7 @@ router.post("/telephony/gather/:callId", async (req, res) => {
   const assistantTurnCount = transcript.filter((t) => t.speaker === "ai").length;
   const cfg = telephonyConfig();
 
-  const turn = await nextTurn({ apiKey: cfg.anthropicApiKey, patient, track, transcript, assistantTurnCount });
+  const turn = await nextTurn({ apiKey: cfg.groqApiKey, patient, track, transcript, assistantTurnCount });
   saveTurn(callId, "ai", turn.say);
 
   if (turn.endCall) {

@@ -1,6 +1,10 @@
 // The live conversation driver for a REAL automated check-in call, and the
 // signal-extraction step that runs once the call ends.
 //
+// Runs on Groq's free tier (Llama 3.3 70B) — chosen for speed, since the
+// patient is waiting on the phone for each reply, and it supports the
+// tool/function calling this needs for reliable structured output.
+//
 // Safety rails (do not weaken these without clinical sign-off — they mirror
 // the non-negotiables the rest of the app already enforces):
 //   - Always identifies itself as automated, never impersonates a clinician.
@@ -13,18 +17,14 @@
 //     — never claims to make the clinical decision itself.
 //   - Hard-capped turn count regardless of what the model wants, to bound
 //     call length and cost.
-//
-// Structured output (both the per-turn reply and the post-call signal
-// extraction) uses Claude tool-use so the shape is enforced, not parsed out
-// of free text.
 
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 
-const MODEL = "claude-sonnet-5";
+const MODEL = "llama-3.3-70b-versatile";
 const MAX_ASSISTANT_TURNS = 7;
 
 function client(apiKey) {
-  return new Anthropic({ apiKey });
+  return new Groq({ apiKey });
 }
 
 function firstName(name) {
@@ -66,45 +66,47 @@ export async function nextTurn({ apiKey, patient, track, transcript, assistantTu
     };
   }
 
-  const anthropic = client(apiKey);
-  const messages = transcript.map((t) => ({
+  const groq = client(apiKey);
+  const history = transcript.map((t) => ({
     role: t.speaker === "ai" ? "assistant" : "user",
     content: t.text,
   }));
-  if (messages.length === 0) {
+  if (history.length === 0) {
     // Prime the very first turn.
-    messages.push({ role: "user", content: "(The call has just connected. Begin the check-in.)" });
+    history.push({ role: "user", content: "(The call has just connected. Begin the check-in.)" });
   }
 
-  const resp = await anthropic.messages.create({
+  const resp = await groq.chat.completions.create({
     model: MODEL,
     max_tokens: 300,
-    system: systemPromptForTurn({ patient, track }),
-    messages,
+    messages: [{ role: "system", content: systemPromptForTurn({ patient, track }) }, ...history],
     tools: [
       {
-        name: "speak",
-        description: "Say the next line of the phone call and indicate whether the call should end.",
-        input_schema: {
-          type: "object",
-          properties: {
-            say: { type: "string", description: "The exact line to speak next, one or two short sentences." },
-            endCall: { type: "boolean" },
-            endReason: { type: ["string", "null"], enum: ["assistant_closed", "emergency_redirect", null] },
+        type: "function",
+        function: {
+          name: "speak",
+          description: "Say the next line of the phone call and indicate whether the call should end.",
+          parameters: {
+            type: "object",
+            properties: {
+              say: { type: "string", description: "The exact line to speak next, one or two short sentences." },
+              endCall: { type: "boolean" },
+              endReason: { type: "string", enum: ["none", "assistant_closed", "emergency_redirect"] },
+            },
+            required: ["say", "endCall", "endReason"],
           },
-          required: ["say", "endCall"],
         },
       },
     ],
-    tool_choice: { type: "tool", name: "speak" },
+    tool_choice: { type: "function", function: { name: "speak" } },
   });
 
-  const toolUse = resp.content.find((b) => b.type === "tool_use");
-  const out = toolUse?.input || {};
+  const toolCall = resp.choices?.[0]?.message?.tool_calls?.[0];
+  const out = toolCall ? safeParse(toolCall.function.arguments) : {};
   return {
     say: out.say || "Thank you — I'm passing this on to your clinical team to review.",
     endCall: Boolean(out.endCall),
-    endReason: out.endReason || (out.endCall ? "assistant_closed" : null),
+    endReason: out.endReason && out.endReason !== "none" ? out.endReason : out.endCall ? "assistant_closed" : null,
   };
 }
 
@@ -115,13 +117,10 @@ export async function nextTurn({ apiKey, patient, track, transcript, assistantTu
  * risk-derivation and escalation logic (logic/riskAssessment.js).
  */
 export async function extractSignals({ apiKey, patient, track, transcript, endedReason }) {
-  const anthropic = client(apiKey);
+  const groq = client(apiKey);
   const transcriptText = transcript.map((t) => `${t.speaker === "ai" ? "System" : firstName(patient.name)}: ${t.text}`).join("\n");
 
-  const resp = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 800,
-    system: `You are extracting structured clinical signals from a completed automated check-in call transcript for a patient on the ${track.label} pathway. This is decision SUPPORT only — you never diagnose and never make the clinical decision.
+  const system = `You are extracting structured clinical signals from a completed automated check-in call transcript for a patient on the ${track.label} pathway. This is decision SUPPORT only — you never diagnose and never make the clinical decision.
 
 Monitored topics for this pathway: ${track.monitor.join(", ")}.
 Baseline noted at discharge: ${patient.baselineReasons.join("; ")}.
@@ -130,40 +129,54 @@ For each monitored topic that was actually discussed, produce one row: label, th
 
 Then write a 1-2 sentence assessment narrative summarising the signals and how they compare to baseline — description only, no advice, no diagnosis, no recommended action.
 
-Then set flagged = true if any signal is red or amber, or if the call ended in an emergency redirect; otherwise false.`,
-    messages: [{ role: "user", content: `Transcript:\n${transcriptText}\n\nCall ended because: ${endedReason}` }],
+Then set flagged = true if any signal is red or amber, or if the call ended in an emergency redirect; otherwise false.
+
+Respond by calling the "record_assessment" tool.`;
+
+  const resp = await groq.chat.completions.create({
+    model: MODEL,
+    max_tokens: 800,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: `Transcript:\n${transcriptText}\n\nCall ended because: ${endedReason}` },
+    ],
     tools: [
       {
-        name: "record_assessment",
-        description: "Record the structured signals extracted from this check-in call.",
-        input_schema: {
-          type: "object",
-          properties: {
-            signals: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  label: { type: "string" },
-                  baseline: { type: "string" },
-                  current: { type: "string" },
-                  severity: { type: "string", enum: ["red", "amber", "green", "grey"] },
+        type: "function",
+        function: {
+          name: "record_assessment",
+          description: "Record the structured signals extracted from this check-in call.",
+          parameters: {
+            type: "object",
+            properties: {
+              signals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string" },
+                    baseline: { type: "string" },
+                    current: { type: "string" },
+                    severity: { type: "string", enum: ["red", "amber", "green", "grey"] },
+                  },
+                  required: ["label", "baseline", "current", "severity"],
                 },
-                required: ["label", "baseline", "current", "severity"],
               },
+              assessment: { type: "string" },
+              flagged: { type: "boolean" },
             },
-            assessment: { type: "string" },
-            flagged: { type: "boolean" },
+            required: ["signals", "assessment", "flagged"],
           },
-          required: ["signals", "assessment", "flagged"],
         },
       },
     ],
-    tool_choice: { type: "tool", name: "record_assessment" },
+    tool_choice: { type: "function", function: { name: "record_assessment" } },
   });
 
-  const toolUse = resp.content.find((b) => b.type === "tool_use");
-  const out = toolUse?.input || { signals: [], assessment: "Unable to extract signals from this call.", flagged: true };
+  const toolCall = resp.choices?.[0]?.message?.tool_calls?.[0];
+  const out = toolCall
+    ? safeParse(toolCall.function.arguments)
+    : { signals: [], assessment: "Unable to extract signals from this call.", flagged: true };
 
   const forcedEmergency = endedReason === "emergency_redirect";
   return {
@@ -173,4 +186,12 @@ Then set flagged = true if any signal is red or amber, or if the call ended in a
       : out.assessment,
     flagged: forcedEmergency ? true : Boolean(out.flagged),
   };
+}
+
+function safeParse(json) {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return {};
+  }
 }
