@@ -301,6 +301,56 @@ export const TRACK_SCENARIOS = {
 export const DECISION_LABELS = Object.fromEntries(CLINICAL_DECISIONS.map((d) => [d.key, d.label]));
 export const URGENCY_LABELS = Object.fromEntries(URGENCY_LEVELS.map(([k, l]) => [k, l]));
 
+// ═══════════════════════════════════════════════════════════════════════════
+// GuardBand — continuous monitoring layer reference data. Backend owns this
+// copy the same way it owns everything above; the frontend renders from it.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const DEVICE_TYPES = {
+  guardband:   { label: "GuardBand", icon: "⌚" },
+  bp_monitor:  { label: "Blood Pressure Monitor", icon: "🩺" },
+  cgm:         { label: "Continuous Glucose Monitor", icon: "🩸" },
+  scale:       { label: "Smart Scale", icon: "⚖️" },
+  thermometer: { label: "Connected Thermometer", icon: "🌡️" },
+};
+
+// unit + a default baseline range used when a patient has no explicit
+// monitoring_baseline set yet (a reasonable adult-general default, NOT a
+// clinical guideline — always overridden by the patient's own baseline).
+export const OBSERVATION_PARAMETERS = {
+  HEART_RATE:                 { label: "Heart Rate",          unit: "bpm",    baselineKey: "heartRate",     default: { min: 60, max: 90 } },
+  SPO2:                       { label: "SpO2",                unit: "%",      baselineKey: "spo2",          default: { min: 94, max: 100 } },
+  RESPIRATORY_RATE:           { label: "Respiratory Rate",     unit: "/min",   baselineKey: "respiratoryRate", default: { min: 12, max: 20 } },
+  TEMPERATURE:                { label: "Temperature",          unit: "°C",     baselineKey: "temperature",   default: { min: 36.0, max: 37.5 } },
+  BLOOD_PRESSURE_SYSTOLIC:    { label: "Blood Pressure (systolic)",  unit: "mmHg", baselineKey: "systolicBP",  default: { min: 100, max: 140 } },
+  BLOOD_PRESSURE_DIASTOLIC:   { label: "Blood Pressure (diastolic)", unit: "mmHg", baselineKey: "diastolicBP", default: { min: 60, max: 90 } },
+  GLUCOSE:                    { label: "Glucose",              unit: "mmol/L", baselineKey: "glucose",       default: { min: 4.0, max: 7.8 } },
+  WEIGHT:                     { label: "Weight",                unit: "kg",     baselineKey: "weight",        default: null },
+  ACTIVITY:                   { label: "Activity",              unit: "level",  baselineKey: null,            default: null },
+  STEPS:                      { label: "Steps",                 unit: "steps",  baselineKey: null,            default: null },
+};
+
+export const SAFETY_EVENT_TYPES = {
+  FALL_DETECTED:          { label: "Possible fall detected", icon: "🚨", severity: "red" },
+  NEAR_FALL:               { label: "Near-fall detected",     icon: "⚠️", severity: "amber" },
+  SOS:                     { label: "SOS activated",          icon: "🆘", severity: "red" },
+  NO_MOVEMENT:             { label: "No movement detected",   icon: "🛑", severity: "amber" },
+  LONG_LIE:                { label: "Long-lie detected",      icon: "🚨", severity: "red" },
+  LOW_BATTERY:             { label: "Device battery low",     icon: "🔋", severity: "grey" },
+  DEVICE_OFFLINE:          { label: "Device went offline",    icon: "📴", severity: "amber" },
+  DEVICE_ONLINE:           { label: "Device back online",     icon: "📶", severity: "green" },
+  HEALTH_ALERT:            { label: "Health alert",           icon: "❤️‍🩹", severity: "amber" },
+  PATIENT_CONFIRMED_SAFE:  { label: "Patient confirmed safe", icon: "✅", severity: "green" },
+};
+
+export const PATIENT_STATUS_LEVELS = {
+  stable:              { label: "Stable",              desc: "No significant deviation from baseline.", icon: "🟢" },
+  watch:               { label: "Watch",               desc: "Small changes detected.", icon: "🔵" },
+  concern:              { label: "Concern",             desc: "Persistent or multiple deviations from baseline.", icon: "🟠" },
+  urgent_review:        { label: "Urgent Review",       desc: "Significant changes requiring clinical review.", icon: "🔴" },
+  active_safety_event:  { label: "Active Safety Event", desc: "Fall / SOS / long-lie / other event awaiting response.", icon: "🚨" },
+};
+
 // Simulated EHR (TrakCare) discharge summary used by the "Sync from EHR" flow.
 export const EHR_DEMO_SUMMARY = {
   name: "Thomas Kerr",

@@ -79,6 +79,27 @@ const PATIENTS = [
       "No answer on 2 attempts. Risk-based rule triggered: clinical team notified rather than closed automatically.",
     scenario: null,
   },
+  {
+    // Dedicated GuardBand demonstration patient (kept separate from the
+    // original 6 so their behaviour is completely unaffected).
+    demo_id: "DEMO-007", name: "Margaret Thompson", age: 81, ward: "Virtual Ward", track: "frailty",
+    condition: "Fall + dehydration, stepped down to Virtual Ward", discharged: "13 Aug 2026, 09:00", duration: "7-14d",
+    baseline_risk: "High",
+    baseline_reasons: ["Age >75", "Recent fall history", "Lives alone"],
+    status: "pending", contact_attempts: 0, unable_to_contact: 0, ehr_synced: 1, ehr_note_pushed: 0,
+    flagged: 0, pipeline_stage: 2, escalation_level: 0, pathway_status: "grey",
+    last_scenario: "clear",
+    comms: { method: "Automated voice call", language: "English", accessibility: ["Carer/family involvement"] },
+    scenario: null,
+    monitoring_baseline: {
+      heartRate: { min: 60, max: 85 },
+      spo2: { min: 94, max: 100 },
+      respiratoryRate: { min: 12, max: 20 },
+      temperature: { min: 36.0, max: 37.5 },
+      systolicBP: { min: 100, max: 145 },
+      diastolicBP: { min: 60, max: 90 },
+    },
+  },
 ];
 
 // ─── Audit trails (mirrors AUDIT_TRAILS), keyed by demo_id ────────────────
@@ -118,6 +139,11 @@ const AUDIT = {
     { time: "13 Aug 2026 · 09:40", label: "Contact attempt 2 — no answer", icon: "📵" },
     { time: "13 Aug 2026 · 09:41", label: "Risk-based rule triggered — clinical team notified", icon: "🚩" },
   ],
+  "DEMO-007": [
+    { time: "13 Aug 2026 · 09:00", label: "Stepped down to Virtual Ward", icon: "🚪" },
+    { time: "13 Aug 2026 · 09:05", label: "Care plan created", icon: "📄" },
+    { time: "13 Aug 2026 · 09:10", label: "GuardBand (GB-007) enrolled — SIMULATED", icon: "📡" },
+  ],
 };
 
 // ─── Pathways (mirrors SEED_PATHWAYS) ────────────────────────────────────
@@ -146,11 +172,14 @@ function wipe() {
     DELETE FROM check_ins;
     DELETE FROM audit_events;
     DELETE FROM clinical_reviews;
+    DELETE FROM safety_events;
+    DELETE FROM observations;
+    DELETE FROM devices;
     DELETE FROM patients;
     DELETE FROM pathways;
     DELETE FROM care_team;
     DELETE FROM sqlite_sequence WHERE name IN
-      ('patients','signals','check_ins','audit_events','clinical_reviews','pathways');
+      ('patients','signals','check_ins','audit_events','clinical_reviews','pathways','devices','observations','safety_events');
   `);
 }
 
@@ -165,12 +194,20 @@ export function seed({ force = false } = {}) {
     INSERT INTO patients
       (demo_id, name, age, ward, track, condition, discharged, duration, baseline_risk,
        baseline_reasons, status, contact_attempts, unable_to_contact, ehr_synced, ehr_note_pushed,
-       flagged, pipeline_stage, escalation_level, pathway_status, last_scenario, comms, assessment)
+       flagged, pipeline_stage, escalation_level, pathway_status, last_scenario, comms, assessment,
+       monitoring_baseline, patient_status)
     VALUES
       (@demo_id, @name, @age, @ward, @track, @condition, @discharged, @duration, @baseline_risk,
        @baseline_reasons, @status, @contact_attempts, @unable_to_contact, @ehr_synced, @ehr_note_pushed,
-       @flagged, @pipeline_stage, @escalation_level, @pathway_status, @last_scenario, @comms, @assessment)
+       @flagged, @pipeline_stage, @escalation_level, @pathway_status, @last_scenario, @comms, @assessment,
+       @monitoring_baseline, @patient_status)
   `);
+  const insertDevice = db.prepare(
+    "INSERT INTO devices (patient_id, device_id, device_type, name, status, battery, connection, last_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  );
+  const insertObservation = db.prepare(
+    "INSERT INTO observations (patient_id, device_id, parameter, value, unit, source_type, simulated, created_at) VALUES (?, ?, ?, ?, ?, 'SIMULATED', 1, ?)"
+  );
   const insertCheckIn = db.prepare(
     "INSERT INTO check_ins (patient_id, scenario_key, no_answer, status) VALUES (?, ?, 0, 'seed')"
   );
@@ -212,6 +249,8 @@ export function seed({ force = false } = {}) {
         last_scenario: p.last_scenario,
         comms: JSON.stringify(p.comms),
         assessment: p.assessment ?? null,
+        monitoring_baseline: p.monitoring_baseline ? JSON.stringify(p.monitoring_baseline) : null,
+        patient_status: p.patient_status || "stable",
       });
       const patientId = info.lastInsertRowid;
 
@@ -231,6 +270,26 @@ export function seed({ force = false } = {}) {
 
       for (const e of AUDIT[p.demo_id] || []) {
         insertAudit.run(patientId, e.time, e.label, e.icon);
+      }
+
+      // Margaret Thompson (DEMO-007): enroll a GuardBand + seed ~6 hours of
+      // normal readings, so her Monitoring tab has real history to show
+      // before anyone touches the Simulator.
+      if (p.demo_id === "DEMO-007") {
+        insertDevice.run(patientId, "GB-007", "guardband", "GuardBand", "online", 91, "LTE", "2026-08-13 15:00:00");
+        const hours = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"];
+        const readings = [
+          [72, 97, 16, 36.7], [74, 97, 16, 36.7], [73, 96, 17, 36.8], [75, 97, 16, 36.7],
+          [72, 97, 16, 36.6], [76, 96, 17, 36.8], [74, 97, 16, 36.7],
+        ];
+        hours.forEach((h, i) => {
+          const ts = `2026-08-13 ${h}:00`;
+          const [hr, spo2, rr, temp] = readings[i];
+          insertObservation.run(patientId, "GB-007", "HEART_RATE", hr, "bpm", ts);
+          insertObservation.run(patientId, "GB-007", "SPO2", spo2, "%", ts);
+          insertObservation.run(patientId, "GB-007", "RESPIRATORY_RATE", rr, "/min", ts);
+          insertObservation.run(patientId, "GB-007", "TEMPERATURE", temp, "°C", ts);
+        });
       }
     }
 

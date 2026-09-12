@@ -4,6 +4,7 @@ import {
   ESCALATION_DESTINATIONS, URGENCY_LEVELS, OUTCOME_OPTIONS, CHECKPOINTS,
   PATHWAY_QUESTIONS, PATIENT_EDUCATION, PATIENT_PLAN_TEMPLATE, PAEDIATRIC_TEMPLATE,
   AI_DISCLAIMER, REVIEWER,
+  DEVICE_TYPES, OBSERVATION_PARAMETERS, SAFETY_EVENT_TYPES, PATIENT_STATUS_LEVELS,
 } from "../config/clinical.js";
 import { telephonyConfig } from "../telephony/env.js";
 
@@ -31,6 +32,10 @@ router.get("/", (_req, res) => {
     patientEducation: PATIENT_EDUCATION,
     patientPlanTemplate: PATIENT_PLAN_TEMPLATE,
     paediatricTemplate: PAEDIATRIC_TEMPLATE,
+    deviceTypes: DEVICE_TYPES,
+    observationParameters: OBSERVATION_PARAMETERS,
+    safetyEventTypes: SAFETY_EVENT_TYPES,
+    patientStatusLevels: PATIENT_STATUS_LEVELS,
   });
 });
 

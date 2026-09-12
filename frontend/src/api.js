@@ -39,4 +39,13 @@ export const api = {
 
   careTeam: () => request("GET", "/care-team"),
   analytics: () => request("GET", "/analytics"),
+
+  // GuardBand — continuous monitoring
+  monitoring: (id) => request("GET", `/patients/${id}/monitoring`),
+  devices: (id) => request("GET", `/patients/${id}/devices`),
+  registerDevice: (id, payload) => request("POST", `/patients/${id}/devices`, payload),
+  postObservation: (id, payload) => request("POST", `/patients/${id}/observations`, payload),
+  postSafetyEvent: (id, payload) => request("POST", `/patients/${id}/safety-events`, payload),
+  advanceSafetyEvent: (id, eventId) => request("POST", `/patients/${id}/safety-events/${eventId}/advance`),
+  confirmSafe: (id, eventId) => request("POST", `/patients/${id}/safety-events/${eventId}/confirm-safe`),
 };

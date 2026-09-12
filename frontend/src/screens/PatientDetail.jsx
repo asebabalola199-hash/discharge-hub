@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { C, Card, Btn, Tag, Inp, Sel, TA, Lbl, Avatar, RISK_DOT, STATUS_STYLE, KIND_COLOR, SEVERITY_COL } from "../theme.jsx";
-import { useConfig } from "../hooks.js";
+import { C, Card, Btn, Tag, Inp, Sel, TA, Lbl, Avatar, RISK_DOT, STATUS_STYLE, KIND_COLOR, SEVERITY_COL, PATIENT_STATUS_STYLE } from "../theme.jsx";
+import { useConfig, useAsync } from "../hooks.js";
 import { JourneyTimeline } from "../components.jsx";
+import { api } from "../api.js";
 
-export default function PatientDetailScreen({ patient, onBack, onStartCall, onSubmitDecision, onSubmitOutcome }) {
+export default function PatientDetailScreen({ patient, onBack, onStartCall, onSubmitDecision, onSubmitOutcome, onRefresh }) {
   const cfg = useConfig();
   const [tab, setTab] = useState("overview");
   const track = cfg.tracks[patient.track];
@@ -28,7 +29,7 @@ export default function PatientDetailScreen({ patient, onBack, onStartCall, onSu
       <Tag v="neutral">SYNTHETIC DATA — DEMO PATIENT</Tag>
 
       <div style={{ display: "flex", gap: "0.25rem", margin: "0.6rem 0", overflowX: "auto" }}>
-        {[["overview", "Overview"], ["plan", "📋 Plan"], ["risk", "⚠️ Risk"], ["audit", "🕒 Audit"], ["review", "🩺 Review"], ["ehr", "🔗 EHR"]].map(([id, l]) => (
+        {[["overview", "Overview"], ["plan", "📋 Plan"], ["risk", "⚠️ Risk"], ["monitoring", "🩺 GuardBand"], ["audit", "🕒 Audit"], ["review", "🩺 Review"], ["ehr", "🔗 EHR"]].map(([id, l]) => (
           <button key={id} onClick={() => setTab(id)} style={{ padding: "0.22rem 0.5rem", borderRadius: 50, border: tab === id ? "none" : `1px solid ${C.border}`, background: tab === id ? C.teal : C.surfaceHi, color: tab === id ? C.bg : C.textSub, fontSize: "0.66rem", fontWeight: tab === id ? 700 : 400, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>{l}</button>
         ))}
       </div>
@@ -136,6 +137,8 @@ export default function PatientDetailScreen({ patient, onBack, onStartCall, onSu
           )}
         </div>
       )}
+
+      {tab === "monitoring" && <MonitoringTab patient={patient} onStartCall={onStartCall} onRefresh={onRefresh} />}
 
       {tab === "audit" && (
         <Card>
@@ -254,6 +257,114 @@ function ClinicalDecisionForm({ patient, onSubmit }) {
       <TA value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Record your clinical reasoning…" />
       <Btn style={{ marginTop: "0.6rem", opacity: decision && !busy ? 1 : 0.5 }} onClick={confirm}>{busy ? "Saving…" : "✅ Confirm Clinical Decision"}</Btn>
     </Card>
+  );
+}
+
+function MonitoringTab({ patient, onStartCall, onRefresh }) {
+  const [refreshTick, setRefreshTick] = useState(0);
+  const mon = useAsync(() => api.monitoring(patient.id), [patient.id, refreshTick]);
+  const [busyId, setBusyId] = useState(null);
+
+  async function advance(eventId) {
+    setBusyId(eventId);
+    try {
+      await api.advanceSafetyEvent(patient.id, eventId);
+      setRefreshTick((t) => t + 1);
+      onRefresh?.(); // the Overview/Audit/Risk tabs read the parent `patient` prop — refresh it too
+    } finally { setBusyId(null); }
+  }
+  async function confirmSafe(eventId) {
+    setBusyId(eventId);
+    try {
+      await api.confirmSafe(patient.id, eventId);
+      setRefreshTick((t) => t + 1);
+      onRefresh?.();
+    } finally { setBusyId(null); }
+  }
+
+  if (mon.loading && !mon.data) return <Card><div style={{ fontSize: "0.8rem", color: C.textSub, textAlign: "center" }}>Loading monitoring data…</div></Card>;
+  if (mon.error) return <Card><div style={{ fontSize: "0.8rem", color: C.red }}>{String(mon.error.message || mon.error)}</div></Card>;
+  const data = mon.data;
+  const [scol, sicon, slabel] = PATIENT_STATUS_STYLE[data.patientStatus] || PATIENT_STATUS_STYLE.stable;
+  const device = data.devices[0];
+
+  return (
+    <div>
+      <Card style={{ borderLeft: `3px solid ${scol}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+          <div style={{ fontWeight: 800, fontSize: "0.84rem" }}>Patient Status</div>
+          <span style={{ fontSize: "1.1rem" }}>{sicon}</span>
+        </div>
+        <Tag v={data.patientStatus === "stable" ? "success" : data.patientStatus === "watch" ? "info" : data.patientStatus === "concern" ? "warning" : "danger"}>{sicon} {slabel}</Tag>
+        {data.reasons.length > 0 && (
+          <div style={{ marginTop: "0.4rem" }}>
+            {data.reasons.map((r) => <div key={r} style={{ fontSize: "0.74rem", color: C.textSub, padding: "0.1rem 0" }}>• {r}</div>)}
+          </div>
+        )}
+      </Card>
+
+      {data.unresolvedEvents.length > 0 && data.unresolvedEvents.map((e) => (
+        <Card key={e.id} style={{ background: C.redBg, borderLeft: `3px solid ${C.red}` }}>
+          <div style={{ fontWeight: 800, color: C.red, marginBottom: "0.25rem" }}>🚨 {e.reasonLabel}</div>
+          <div style={{ fontSize: "0.72rem", color: C.textSub, marginBottom: "0.5rem" }}>
+            Status: <strong>{e.status.replace(/_/g, " ")}</strong> · <Tag v="neutral">SIMULATED DATA</Tag>
+          </div>
+          <div style={{ display: "flex", gap: "0.4rem" }}>
+            {e.status !== "clinical_alerted" && (
+              <Btn sm v="danger" onClick={() => advance(e.id)} style={{ opacity: busyId === e.id ? 0.6 : 1 }}>
+                {busyId === e.id ? "…" : e.status === "awaiting_response" ? "No response — notify family" : "No response — alert clinical team"}
+              </Btn>
+            )}
+            <Btn sm v="ghost" onClick={() => confirmSafe(e.id)} style={{ opacity: busyId === e.id ? 0.6 : 1 }}>✅ Patient confirmed safe</Btn>
+          </div>
+        </Card>
+      ))}
+
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+          <div style={{ fontWeight: 700 }}>GuardBand Device</div>
+          <Tag v="neutral">SIMULATED DATA</Tag>
+        </div>
+        {device ? (
+          <div style={{ fontSize: "0.78rem", color: C.textSub }}>
+            <div>{device.name} ({device.device_id}) — <span style={{ color: device.status === "offline" ? C.red : C.teal, fontWeight: 700 }}>{device.status.toUpperCase()}</span></div>
+            <div>Battery: {device.battery}% · Connection: {device.connection} · Last sync: {device.last_sync}</div>
+          </div>
+        ) : (
+          <div style={{ fontSize: "0.78rem", color: C.textSub }}>No device enrolled yet — use the GuardBand Simulator (More → Monitoring) to enroll one.</div>
+        )}
+      </Card>
+
+      {data.vitals.length > 0 && (
+        <Card>
+          <div style={{ fontWeight: 700, marginBottom: "0.5rem" }}>Continuous Monitoring</div>
+          {data.vitals.map((v) => (
+            <div key={v.parameter} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.3rem 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: "0.78rem" }}>{v.label}</span>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: "0.8rem", fontWeight: 700, color: SEVERITY_COL[v.status === "concern" ? "red" : v.status === "watch" ? "amber" : "green"] }}>{v.value}{v.unit}</span>{" "}
+                <Tag v={v.status === "concern" ? "danger" : v.status === "watch" ? "warning" : "success"}>{v.status}</Tag>
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: "0.62rem", color: C.textDim, marginTop: "0.4rem" }}>All readings are SIMULATED — no real sensor is attached to this demo patient.</div>
+        </Card>
+      )}
+
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+          <div style={{ fontWeight: 700 }}>Monitoring Timeline</div>
+          <Btn sm onClick={() => onStartCall(patient)}>▶ Start Check-In</Btn>
+        </div>
+        {data.timeline.length === 0 && <div style={{ fontSize: "0.78rem", color: C.textSub }}>No monitoring activity yet.</div>}
+        {data.timeline.slice(-12).reverse().map((row, i) => (
+          <div key={i} style={{ display: "flex", gap: "0.5rem", padding: "0.25rem 0", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: "0.62rem", color: C.textDim, width: 90, flexShrink: 0 }}>{row.time}</div>
+            <div style={{ fontSize: "0.76rem" }}>{row.kind === "event" ? "🚨 " : row.kind === "check_in" ? "📞 " : ""}{row.label}</div>
+          </div>
+        ))}
+      </Card>
+    </div>
   );
 }
 

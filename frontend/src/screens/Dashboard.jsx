@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C, Card, Btn, RISK_COL, RISK_DOT } from "../theme.jsx";
+import { C, Card, Btn, RISK_COL, RISK_DOT, PATIENT_STATUS_STYLE } from "../theme.jsx";
 
 // Dashboard — Clinical View (who needs attention today?) and Service View
 // (is this pathway working?). Recommendations come from the API (p.recommendation).
@@ -9,8 +9,14 @@ export default function DashboardScreen({ patients, onNavigate, onOpenPatient })
   const dueToday = patients.filter((p) => p.status === "pending").length;
   const needsReview = patients.filter((p) => p.flagged && p.escalationLevel < 5).length;
   const awaitingEscalation = patients.filter((p) => p.flagged && p.escalationLevel >= 2 && p.escalationLevel < 5).length;
+  const monitoringCounts = {
+    watch: patients.filter((p) => p.patientStatus === "watch").length,
+    concern: patients.filter((p) => p.patientStatus === "concern").length,
+    urgent_review: patients.filter((p) => p.patientStatus === "urgent_review").length,
+    active_safety_event: patients.filter((p) => p.patientStatus === "active_safety_event").length,
+  };
   const worklist = [...patients]
-    .filter((p) => p.flagged || p.status === "pending" || p.unableToContact)
+    .filter((p) => p.flagged || p.status === "pending" || p.unableToContact || (p.patientStatus && p.patientStatus !== "stable" && p.patientStatus !== "watch"))
     .sort(
       (a, b) =>
         (a.baselineRisk === "High" ? 0 : a.baselineRisk === "Medium" ? 1 : 2) -
@@ -37,6 +43,15 @@ export default function DashboardScreen({ patients, onNavigate, onOpenPatient })
 
       {mode === "clinical" ? (
         <>
+          <Card style={{ padding: "0.6rem 0.7rem", marginBottom: "0.6rem" }}>
+            <div style={{ fontSize: "0.66rem", fontWeight: 700, color: C.textDim, textTransform: "uppercase", marginBottom: "0.35rem" }}>📡 Patient Monitoring (GuardBand)</div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem" }}>
+              <span style={{ color: C.blue }}>{monitoringCounts.watch} Watch</span>
+              <span style={{ color: C.amber }}>{monitoringCounts.concern} Concern</span>
+              <span style={{ color: C.red }}>{monitoringCounts.urgent_review} Urgent</span>
+              <span style={{ color: C.red, fontWeight: 700 }}>{monitoringCounts.active_safety_event} Safety Events</span>
+            </div>
+          </Card>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem", marginBottom: "0.75rem" }}>
             {[["Patients on pathway", onPathway, C.text], ["Check-ins due today", dueToday, C.blue], ["Responses requiring review", needsReview, C.red], ["Escalations awaiting action", awaitingEscalation, C.amber]].map(([l, v, col]) => (
               <Card key={l} style={{ textAlign: "center", padding: "0.7rem 0.5rem" }}>

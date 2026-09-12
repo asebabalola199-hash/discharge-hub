@@ -1,4 +1,4 @@
-import { C, Card, Btn, Tag, Avatar, KIND_COLOR } from "../theme.jsx";
+import { C, Card, Btn, Tag, Avatar, KIND_COLOR, PATIENT_STATUS_STYLE } from "../theme.jsx";
 import { useConfig } from "../hooks.js";
 
 // Clinical Worklist & Orchestration. The system recommends; a clinician
@@ -25,6 +25,10 @@ export default function WorklistScreen({ patients, onExecute, onOpenPatient }) {
               </div>
               <span style={{ fontSize: "1.2rem" }}>{rec.icon}</span>
             </div>
+            {p.patientStatus && p.patientStatus !== "stable" && (() => {
+              const [, sicon, slabel] = PATIENT_STATUS_STYLE[p.patientStatus] || [];
+              return <div style={{ marginTop: "0.35rem" }}><Tag v={p.patientStatus === "watch" ? "info" : p.patientStatus === "concern" ? "warning" : "danger"}>{sicon} GuardBand: {slabel}</Tag></div>;
+            })()}
             <div style={{ background: C.surfaceHi, borderRadius: 10, padding: "0.5rem 0.65rem", margin: "0.5rem 0" }}>
               <Tag v="purple">AI-assisted</Tag>
               <div style={{ fontSize: "0.82rem", fontWeight: 700, marginTop: "0.3rem" }}>{rec.label}</div>

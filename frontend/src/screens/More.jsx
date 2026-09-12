@@ -3,6 +3,7 @@ import { C, Lbl } from "../theme.jsx";
 export default function MoreScreen({ onNavigate }) {
   const sections = [
     { t: "Insights", items: [["📊", "Analytics & Outcomes", "analytics"], ["📈", "Evidence & Evaluation", "evidence"]] },
+    { t: "Monitoring", items: [["🩺", "GuardBand Simulator", "guardband-sim"], ["📡", "Monitoring Overview", "monitoring-overview"]] },
     { t: "Care Setup", items: [["👥", "Care Team Directory", "team"]] },
     { t: "Patient Experience", items: [["🧑", "Patient View (Preview)", "patientview"]] },
   ];

@@ -131,12 +131,68 @@ export function migrate() {
       medical   TEXT,
       community TEXT
     );
+
+    -- ─── GuardBand: continuous monitoring layer ──────────────────────────
+    -- A patient can have several connected devices contributing data to the
+    -- one patient record (FR: multi-sensor ecosystem).
+    CREATE TABLE IF NOT EXISTS devices (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id   INTEGER NOT NULL REFERENCES patients(id),
+      device_id    TEXT    NOT NULL,   -- e.g. "GB-001"
+      device_type  TEXT    NOT NULL,   -- 'guardband' | 'bp_monitor' | 'cgm' | 'scale' | 'thermometer'
+      name         TEXT,
+      status       TEXT    DEFAULT 'online',  -- 'online' | 'connected' | 'offline'
+      battery      INTEGER,
+      connection   TEXT,               -- 'BLE' | 'LTE' | 'WiFi'
+      last_sync    TEXT    DEFAULT (datetime('now')),
+      created_at   TEXT    DEFAULT (datetime('now'))
+    );
+
+    -- Unified physiological/activity observation model. One row per reading,
+    -- from any device. simulated=1 for everything in this prototype — never
+    -- described in the UI as a real measurement.
+    CREATE TABLE IF NOT EXISTS observations (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id  INTEGER NOT NULL REFERENCES patients(id),
+      device_id   TEXT,
+      parameter   TEXT    NOT NULL,   -- HEART_RATE | SPO2 | RESPIRATORY_RATE | TEMPERATURE |
+                                       -- BLOOD_PRESSURE_SYSTOLIC | BLOOD_PRESSURE_DIASTOLIC |
+                                       -- GLUCOSE | WEIGHT | ACTIVITY | STEPS
+      value       REAL,
+      unit        TEXT,
+      source_type TEXT    DEFAULT 'SIMULATED',  -- 'WEARABLE' | 'CONNECTED_DEVICE' | 'SIMULATED'
+      simulated   INTEGER DEFAULT 1,
+      confidence  REAL    DEFAULT 0.95,
+      created_at  TEXT    DEFAULT (datetime('now'))
+    );
+
+    -- Safety events (fall, SOS, long-lie, etc). The response workflow
+    -- (patient confirm -> family notified -> clinical alert) only ever
+    -- advances via an explicit human/demo action (routes/monitoring.js) —
+    -- never automatically, and never straight to emergency services.
+    CREATE TABLE IF NOT EXISTS safety_events (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id   INTEGER NOT NULL REFERENCES patients(id),
+      device_id    TEXT,
+      type         TEXT    NOT NULL,   -- FALL_DETECTED | NEAR_FALL | SOS | NO_MOVEMENT |
+                                        -- LONG_LIE | LOW_BATTERY | DEVICE_OFFLINE |
+                                        -- DEVICE_ONLINE | HEALTH_ALERT | PATIENT_CONFIRMED_SAFE
+      status       TEXT    DEFAULT 'awaiting_response',
+                                        -- 'awaiting_response' | 'family_notified' |
+                                        -- 'clinical_alerted' | 'resolved'
+      confidence   REAL    DEFAULT 0.9,
+      simulated    INTEGER DEFAULT 1,
+      created_at   TEXT    DEFAULT (datetime('now')),
+      resolved_at  TEXT
+    );
   `);
 
   // Additive migrations for DBs created before a column existed.
   ensureColumn("patients", "phone", "TEXT");
   ensureColumn("check_ins", "mode", "TEXT DEFAULT 'scripted'");
   ensureColumn("check_ins", "call_id", "INTEGER");
+  ensureColumn("patients", "monitoring_baseline", "TEXT");
+  ensureColumn("patients", "patient_status", "TEXT DEFAULT 'stable'");
 }
 
 function ensureColumn(table, column, ddlType) {

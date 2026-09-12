@@ -18,6 +18,8 @@ import CareTeamScreen from "./screens/CareTeam.jsx";
 import PatientPreviewScreen from "./screens/PatientPreview.jsx";
 import LiveCallModal from "./screens/LiveCallModal.jsx";
 import RealCallModal from "./screens/RealCallModal.jsx";
+import GuardBandSimulator from "./screens/GuardBandSimulator.jsx";
+import MonitoringOverview from "./screens/MonitoringOverview.jsx";
 
 export default function App() {
   const config = useAsync(api.config, []);
@@ -88,6 +90,7 @@ export default function App() {
             onStartCall={(p) => setCalling(p)}
             onSubmitDecision={submitDecision}
             onSubmitOutcome={submitOutcome}
+            onRefresh={refreshAll}
           />
         ) : null;
       case "worklist":
@@ -104,6 +107,10 @@ export default function App() {
         return <CareTeamScreen onBack={() => setScreen("more")} />;
       case "patientview":
         return <PatientPreviewScreen onBack={() => setScreen("more")} />;
+      case "guardband-sim":
+        return <GuardBandSimulator patients={list} onBack={() => setScreen("more")} onOpenPatient={openPatient} onRefresh={refreshAll} />;
+      case "monitoring-overview":
+        return <MonitoringOverview patients={list} onBack={() => setScreen("more")} onOpenPatient={openPatient} />;
       default:
         return null;
     }

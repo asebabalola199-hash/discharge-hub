@@ -15,6 +15,7 @@ import pathwaysRoutes from "./routes/pathways.js";
 import careTeamRoutes from "./routes/careteam.js";
 import analyticsRoutes from "./routes/analytics.js";
 import telephonyRoutes from "./routes/telephony.js";
+import monitoringRoutes from "./routes/monitoring.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +36,7 @@ app.use("/api/pathways", pathwaysRoutes);
 app.use("/api/care-team", careTeamRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api", telephonyRoutes); // /api/patients/:id/call + /api/telephony/* webhooks
+app.use("/api", monitoringRoutes); // GuardBand: /api/patients/:id/monitoring, /devices, /observations, /safety-events
 
 // In production the built frontend is served from backend/public.
 const publicDir = join(here, "..", "public");

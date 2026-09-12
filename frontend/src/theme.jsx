@@ -66,5 +66,15 @@ export const KIND_COLOR = { call: C.blue, review: C.red, done: C.teal };
 export const TRACK_COL = { blue: C.blue, amber: C.amber, teal: C.teal, purple: C.purple, green: C.green, red: C.red, grey: C.grey };
 export const SEVERITY_COL = { red: C.red, amber: C.amber, green: C.green, grey: C.textDim };
 
+// GuardBand patient-status levels (additive to, not a replacement for, the
+// existing red/amber/green pathway status above).
+export const PATIENT_STATUS_STYLE = {
+  stable: [C.green, "🟢", "Stable"],
+  watch: [C.blue, "🔵", "Watch"],
+  concern: [C.amber, "🟠", "Concern"],
+  urgent_review: [C.red, "🔴", "Urgent Review"],
+  active_safety_event: [C.red, "🚨", "Active Safety Event"],
+};
+
 // Resolve a track (from /api/config) to include its hex accent colour.
 export function trackColor(track) { return TRACK_COL[track?.colToken] || C.blue; }
